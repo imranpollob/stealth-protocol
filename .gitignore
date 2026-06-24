@@ -1,0 +1,43 @@
+# Foundry build outputs
+cache/
+out/
+broadcast/
+
+# Hardhat / Node.js artifacts
+node_modules/
+artifacts/
+coverage/
+coverage.json
+typechain/
+typechain-types/
+dist/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Foundry dependencies (installed with --no-git)
+lib/
+
+# Downloaded tarballs
+*.tgz
+
+# agents
+.mimocode
