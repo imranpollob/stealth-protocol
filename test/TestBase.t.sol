@@ -17,6 +17,7 @@ abstract contract TestBase is Test {
     address internal constant ENTRY_POINT = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
 
     uint256 internal constant V_MIN = 0.01 ether;
+    uint256 internal constant NONREFUNDABLE_FEE = 0.01 ether;
     uint256 internal constant SCHEME_ID = 1;
 
     MockAnnouncer internal announcer;
@@ -70,7 +71,8 @@ abstract contract TestBase is Test {
             address(announcer),
             bootstrapPMAddr,
             creditPoolAddr,
-            V_MIN
+            V_MIN,
+            NONREFUNDABLE_FEE
         );
 
         vm.stopPrank();

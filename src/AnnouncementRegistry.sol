@@ -10,25 +10,19 @@ interface IEligibilityMirror {
 
 /// @title AnnouncementRegistry
 /// @notice Payable wrapper around an ERC-5564 Announcer that ties sponsorship
-///         eligibility to real on-chain ETH transfer.
+///         eligibility to a genuine, irrecoverable on-chain cost.
 ///
-///         The ONLY path to Bootstrap eligibility is announceAndFund():
-///         it requires msg.value >= vMin, forwards that ETH to the stealth
-///         address in the same transaction, calls the underlying Announcer,
-///         and sets eligible[stealthAddress] = true in its own storage.
+///         Each announceAndFund() call requires msg.value >= vMin + nonRefundableFee:
+///           - vMin is forwarded to stealthAddress (funds bootstrap gas)
+///           - nonRefundableFee is burned to address(0) — irrecoverable even in
+///             self-dealing attacks where the caller controls stealthAddress
 ///
-///         Callers who invoke the raw Announcer directly still get a valid,
-///         spendable stealth payment — they just don't earn Bootstrap
-///         sponsorship. Correctness of the underlying stealth payment is
-///         never affected by this registry.
-///
-///         Sybil-resistance invariant (must hold at deploy time and after any
-///         vMin update):
-///           V_MIN > c_ann + kappa * c_credit
-///         where c_ann = gas cost to self-announce, c_credit = MAX_CREDIT_GAS
-///         enforced by CreditPaymaster, kappa > 1.
-///         V_MIN is denominated in ETH (wei). c_credit is a fixed gas-unit
-///         ceiling, making the invariant independent of gas-price volatility.
+///         Sybil-resistance invariant (must hold after any fee update):
+///           nonRefundableFee > kappa * c_credit
+///         where c_credit = MAX_CREDIT_GAS enforced by CreditPaymaster, kappa > 1.
+///         Both terms are in ETH (wei) at the anchor gas price.
+///         The old V_MIN > c_ann + kappa*c_credit invariant broke because V_MIN was
+///         fully refundable via a self-dealing round trip; nonRefundableFee is not.
 contract AnnouncementRegistry is IAnnouncementRegistry {
     IERC5564Announcer public immutable announcer;
     IEligibilityMirror public immutable bootstrapPaymaster;
@@ -36,6 +30,9 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
 
     address public owner;
     uint256 public vMin;
+    // Permanently burned on each announcement — the genuine Sybil cost.
+    // Invariant: nonRefundableFee > kappa * MAX_CREDIT_GAS (in ETH at anchor gas price).
+    uint256 public nonRefundableFee;
 
     mapping(address => bool) public eligible;
 
@@ -51,15 +48,17 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
         _;
     }
 
-    /// @param _announcer    ERC-5564 Announcer (e.g. 0x55649E01B5Df198D18D95b5cc5051630cfD45564 on mainnet)
-    /// @param _bootstrapPM  BootstrapPaymaster address (will receive mirrorEligible calls)
-    /// @param _creditPool   CreditPool address (will receive mirrorEligible calls)
-    /// @param _vMin         Initial minimum funding threshold in wei
+    /// @param _announcer        ERC-5564 Announcer (0x55649E01B5Df198D18D95b5cc5051630cfD45564 mainnet)
+    /// @param _bootstrapPM      BootstrapPaymaster address
+    /// @param _creditPool       CreditPool address
+    /// @param _vMin             Minimum ETH forwarded to the stealth address (wei)
+    /// @param _nonRefundableFee ETH permanently burned on each announcement (wei)
     constructor(
         address _announcer,
         address _bootstrapPM,
         address _creditPool,
-        uint256 _vMin
+        uint256 _vMin,
+        uint256 _nonRefundableFee
     ) {
         if (_announcer == address(0) || _bootstrapPM == address(0) || _creditPool == address(0)) {
             revert ZeroAddress();
@@ -69,41 +68,55 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
         creditPool = IEligibilityMirror(_creditPool);
         owner = msg.sender;
         vMin = _vMin;
+        nonRefundableFee = _nonRefundableFee;
     }
 
-    /// @notice Atomically: fund the stealth address, announce it, and mark it eligible.
-    ///         msg.value must be >= vMin; entire msg.value is forwarded to stealthAddress.
+    /// @notice Atomically: burn nonRefundableFee, forward remaining ETH to stealthAddress,
+    ///         announce it on ERC-5564, and mark it eligible for gas sponsorship.
+    ///         msg.value must be >= vMin + nonRefundableFee.
     function announceAndFund(
         uint256 schemeId,
         address stealthAddress,
         bytes calldata ephemeralPubKey,
         bytes calldata metadata
     ) external payable override {
-        if (msg.value < vMin) revert BelowVMin(msg.value, vMin);
+        uint256 required = vMin + nonRefundableFee;
+        if (msg.value < required) revert BelowVMin(msg.value, required);
 
-        // 1. Forward ETH — eligibility is tied to ETH the registry itself moved.
-        (bool ok,) = stealthAddress.call{value: msg.value}("");
+        // 1. Burn the non-refundable fee to address(0) — unspendable on any EVM chain.
+        //    This is the genuine Sybil cost: irrecoverable even if msg.sender == stealthAddress.
+        (bool burnOk,) = address(0).call{value: nonRefundableFee}("");
+        if (!burnOk) revert ETHForwardFailed();
+
+        // 2. Forward remaining ETH to stealthAddress.
+        uint256 forwardAmount = msg.value - nonRefundableFee;
+        (bool ok,) = stealthAddress.call{value: forwardAmount}("");
         if (!ok) revert ETHForwardFailed();
 
-        // 2. Announce via underlying ERC-5564 Announcer.
+        // 3. Announce via underlying ERC-5564 Announcer.
         announcer.announce(schemeId, stealthAddress, ephemeralPubKey, metadata);
 
-        // 3. Record eligibility in own storage.
+        // 4. Record eligibility in own storage.
         eligible[stealthAddress] = true;
 
-        // 4. Push to BootstrapPaymaster's mirrored storage (ERC-7562: paymaster reads own storage).
+        // 5. Push to BootstrapPaymaster's mirrored storage (ERC-7562: paymaster reads own storage).
         bootstrapPaymaster.mirrorEligible(stealthAddress);
 
-        // 5. Push to CreditPool's mirrored storage (so deposit() can enforce the invariant
+        // 6. Push to CreditPool's mirrored storage (deposit() enforces its own check
         //    without an external SLOAD into this contract).
         creditPool.mirrorEligible(stealthAddress);
 
-        emit Funded(stealthAddress, msg.value);
+        emit Funded(stealthAddress, forwardAmount, nonRefundableFee);
     }
 
     function setVMin(uint256 newVMin) external onlyOwner {
         emit VMinUpdated(vMin, newVMin);
         vMin = newVMin;
+    }
+
+    function setNonRefundableFee(uint256 newFee) external onlyOwner {
+        emit NonRefundableFeeUpdated(nonRefundableFee, newFee);
+        nonRefundableFee = newFee;
     }
 
     function transferOwnership(address newOwner) external onlyOwner {

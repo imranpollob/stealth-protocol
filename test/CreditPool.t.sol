@@ -9,7 +9,7 @@ contract CreditPoolTest is TestBase {
 
     function _makeEligible(address stealthAddr) internal {
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealthAddr, bytes("pk"), bytes("")
         );
     }
@@ -74,7 +74,7 @@ contract CreditPoolTest is TestBase {
         _makeEligible(stealth);
 
         vm.prank(sender2);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth2, bytes("pk2"), bytes("")
         );
 

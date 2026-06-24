@@ -17,7 +17,7 @@ contract ReplayResistanceTest is TestBase {
 
     function _deposit() internal returns (uint256) {
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth, bytes("pk"), bytes("")
         );
         vm.prank(stealth);
@@ -70,7 +70,7 @@ contract ReplayResistanceTest is TestBase {
 
         // Deposit 1
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth, bytes("pk1"), bytes("")
         );
         vm.prank(stealth);
@@ -78,7 +78,7 @@ contract ReplayResistanceTest is TestBase {
 
         // Deposit 2
         vm.prank(sender2);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth2, bytes("pk2"), bytes("")
         );
         vm.prank(stealth2);

@@ -8,7 +8,7 @@ import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOper
 contract BootstrapPaymasterTest is TestBase {
     function _fundAndEligible(address stealthAddr) internal {
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealthAddr, bytes("pk"), bytes("")
         );
     }

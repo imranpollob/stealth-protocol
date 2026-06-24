@@ -47,6 +47,7 @@ contract Demo is Script {
     uint256 constant DEMO_NULLIFIER  = 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890;
 
     uint256 constant V_MIN = 0.01 ether;
+    uint256 constant NONREFUNDABLE_FEE = 0.01 ether;
     uint256 constant SCHEME_ID = 1;
 
     function run() external {
@@ -89,7 +90,7 @@ contract Demo is Script {
             ENTRY_POINT, registryAddr, CreditPool.deposit.selector
         );
         AnnouncementRegistry registry = new AnnouncementRegistry(
-            address(announcer), bootstrapPMAddr, creditPoolAddr, V_MIN
+            address(announcer), bootstrapPMAddr, creditPoolAddr, V_MIN, NONREFUNDABLE_FEE
         );
 
         vm.stopBroadcast();
@@ -102,12 +103,12 @@ contract Demo is Script {
 
         // ── Step 1: ANNOUNCE ─────────────────────────────────────────────────
         console.log("--- STEP 1: Announce and Fund ---");
-        console.log("Sender calls announceAndFund() with", V_MIN / 1e15, "finney");
+        console.log("Sender calls announceAndFund() - total sent:", (V_MIN + NONREFUNDABLE_FEE) / 1e15, "finney");
 
         uint256 stealthBefore = stealth.balance;
 
         vm.broadcast(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID,
             stealth,
             hex"02abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab", // ephemeral pubkey (demo)

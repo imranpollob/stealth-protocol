@@ -23,7 +23,7 @@ contract IntegrationTest is TestBase {
         uint256 stealthBalanceBefore = stealth.balance;
 
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth, bytes("ephemeralPubKey"), bytes("metadata")
         );
 

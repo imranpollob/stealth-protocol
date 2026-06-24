@@ -10,11 +10,11 @@ contract AnnouncementRegistryTest is TestBase {
         assertFalse(eligibleBefore);
 
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth, bytes("pubkey"), bytes("")
         );
 
-        // ETH forwarded to stealth address
+        // Only V_MIN is forwarded (fee was burned); stealth balance rises by exactly V_MIN
         assertEq(stealth.balance, stealthBalanceBefore + V_MIN);
 
         // Eligibility set in registry's own storage
@@ -33,7 +33,7 @@ contract AnnouncementRegistryTest is TestBase {
             abi.encodeWithSelector(
                 AnnouncementRegistry.BelowVMin.selector,
                 V_MIN - 1,
-                V_MIN
+                V_MIN + NONREFUNDABLE_FEE
             )
         );
         registry.announceAndFund{value: V_MIN - 1}(
@@ -41,22 +41,25 @@ contract AnnouncementRegistryTest is TestBase {
         );
     }
 
-    function test_announceAndFund_exactVMin_accepted() public {
+    function test_announceAndFund_exactMinimum_accepted() public {
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth, bytes("pubkey"), bytes("")
         );
         assertTrue(registry.eligible(stealth));
     }
 
-    function test_announceAndFund_aboveVMin_accepted() public {
+    function test_announceAndFund_aboveMinimum_accepted() public {
+        uint256 extra = 0.5 ether;
+        uint256 total = V_MIN + NONREFUNDABLE_FEE + extra;
+
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN * 2}(
+        registry.announceAndFund{value: total}(
             SCHEME_ID, stealth, bytes("pubkey"), bytes("")
         );
         assertTrue(registry.eligible(stealth));
-        // All ETH (not just vMin) forwarded
-        assertGe(stealth.balance, V_MIN * 2);
+        // Forwarded = total - fee = V_MIN + extra
+        assertGe(stealth.balance, V_MIN + extra);
     }
 
     function test_setVMin_onlyOwner() public {
@@ -69,6 +72,12 @@ contract AnnouncementRegistryTest is TestBase {
         vm.prank(deployer);
         registry.setVMin(1 ether);
         assertEq(registry.vMin(), 1 ether);
+    }
+
+    function test_setNonRefundableFee_byOwner() public {
+        vm.prank(deployer);
+        registry.setNonRefundableFee(0.05 ether);
+        assertEq(registry.nonRefundableFee(), 0.05 ether);
     }
 
     function test_eligibility_notSet_forDirectAnnouncer() public {

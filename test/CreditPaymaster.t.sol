@@ -14,7 +14,7 @@ contract CreditPaymasterTest is TestBase {
     function _fullBootstrap() internal returns (uint256 poolRoot) {
         // Fund and announce
         vm.prank(sender);
-        registry.announceAndFund{value: V_MIN}(
+        registry.announceAndFund{value: V_MIN + NONREFUNDABLE_FEE}(
             SCHEME_ID, stealth, bytes("pk"), bytes("")
         );
         // Deposit commitment into pool
