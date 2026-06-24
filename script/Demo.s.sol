@@ -183,11 +183,14 @@ contract Demo is Script {
         spendOp.accountGasLimits = bytes32(abi.encodePacked(uint128(50_000), uint128(100_000)));
         spendOp.preVerificationGas = 21_000;
         spendOp.gasFees = bytes32(abi.encodePacked(uint128(1 gwei), uint128(2 gwei)));
+        bytes memory encodedProof = abi.encode(proof);
         spendOp.paymasterAndData = abi.encodePacked(
             address(creditPM),
             uint128(200_000),
             uint128(0),
-            abi.encode(proof)   // starts at offset 52
+            encodedProof,                  // starts at offset 52
+            uint16(encodedProof.length),   // PAYMASTER_SIG_MAGIC convention
+            bytes8(0x22e325a297439656)     // PAYMASTER_SIG_MAGIC: excludes proof from userOpHash
         );
 
         vm.prank(ENTRY_POINT);

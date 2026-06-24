@@ -34,7 +34,8 @@ contract ReplayResistanceTest is TestBase {
         bytes memory proofEncoded = abi.encode(proof);
         PackedUserOperation memory userOp = buildCreditUserOp(spender, bytes32(0), proof, uopHash);
         userOp.paymasterAndData = abi.encodePacked(
-            address(creditPM), uint128(200_000), uint128(0), proofEncoded
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded, uint16(proofEncoded.length), PAYMASTER_SIG_MAGIC
         );
 
         // First use — succeeds
@@ -51,7 +52,8 @@ contract ReplayResistanceTest is TestBase {
         bytes memory proofEncoded2 = abi.encode(proof2);
         PackedUserOperation memory userOp2 = buildCreditUserOp(spender, bytes32(0), proof2, uopHash2);
         userOp2.paymasterAndData = abi.encodePacked(
-            address(creditPM), uint128(200_000), uint128(0), proofEncoded2
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded2, uint16(proofEncoded2.length), PAYMASTER_SIG_MAGIC
         );
 
         vm.prank(ENTRY_POINT);
@@ -97,13 +99,13 @@ contract ReplayResistanceTest is TestBase {
         bytes memory enc1 = abi.encode(proof1);
         PackedUserOperation memory op1 = buildCreditUserOp(spender, bytes32(0), proof1, uopHash1);
         op1.paymasterAndData = abi.encodePacked(
-            address(creditPM), uint128(200_000), uint128(0), enc1
+            address(creditPM), uint128(200_000), uint128(0), enc1, uint16(enc1.length), bytes8(0x22e325a297439656)
         );
 
         bytes memory enc2 = abi.encode(proof2);
         PackedUserOperation memory op2 = buildCreditUserOp(spender, bytes32(0), proof2, uopHash2);
         op2.paymasterAndData = abi.encodePacked(
-            address(creditPM), uint128(200_000), uint128(0), enc2
+            address(creditPM), uint128(200_000), uint128(0), enc2, uint16(enc2.length), bytes8(0x22e325a297439656)
         );
 
         vm.prank(ENTRY_POINT);

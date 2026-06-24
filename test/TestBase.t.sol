@@ -20,6 +20,10 @@ abstract contract TestBase is Test {
     uint256 internal constant NONREFUNDABLE_FEE = 0.01 ether;
     uint256 internal constant SCHEME_ID = 1;
 
+    // keccak("PaymasterSignature")[:8] — sentinel that tells paymasterDataKeccak to
+    // exclude trailing proof bytes from userOpHash (ERC-4337 paymaster signature convention)
+    bytes8 internal constant PAYMASTER_SIG_MAGIC = bytes8(0x22e325a297439656);
+
     MockAnnouncer internal announcer;
     MockSemaphoreVerifier internal verifier;
     AnnouncementRegistry internal registry;
@@ -120,9 +124,11 @@ abstract contract TestBase is Test {
             address(creditPM),
             uint128(200_000), // paymasterVerificationGasLimit
             uint128(0),       // paymasterPostOpGasLimit
-            proofEncoded      // starts at offset 52
+            proofEncoded,     // starts at offset 52
+            uint16(proofEncoded.length), // required by PAYMASTER_SIG_MAGIC convention
+            PAYMASTER_SIG_MAGIC          // excludes proof from paymasterDataKeccak / userOpHash
         );
-        // suppress unused hint warning
+        // suppress unused hint warning (kept for API compatibility)
         userOpHashHint;
     }
 

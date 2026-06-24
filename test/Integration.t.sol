@@ -64,7 +64,8 @@ contract IntegrationTest is TestBase {
         );
         bytes memory proofEncoded = abi.encode(proof);
         spendOp.paymasterAndData = abi.encodePacked(
-            address(creditPM), uint128(200_000), uint128(0), proofEncoded
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded, uint16(proofEncoded.length), PAYMASTER_SIG_MAGIC
         );
 
         vm.prank(ENTRY_POINT);

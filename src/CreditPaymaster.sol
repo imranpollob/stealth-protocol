@@ -31,7 +31,13 @@ import {NullifierLogic} from "./lib/NullifierLogic.sol";
 ///           [0:20]   paymaster address
 ///           [20:36]  paymasterVerificationGasLimit (uint128)
 ///           [36:52]  paymasterPostOpGasLimit (uint128)
-///           [52:]    abi.encode(SemaphoreProof) — the actual proof data
+///           [52:N]   abi.encode(SemaphoreProof)
+///           [N:N+2]  uint16(proofLen) — required by PAYMASTER_SIG_MAGIC convention
+///           [N+2:]   PAYMASTER_SIG_MAGIC (0x22e325a297439656, 8 bytes)
+///
+///         The PAYMASTER_SIG_MAGIC suffix excludes the proof bytes from paymasterDataKeccak,
+///         making userOpHash stable before proof generation. This breaks the circular
+///         dependency (proof.scope == userOpHash) that would otherwise exist.
 ///
 ///         ERC-7562 compliance:
 ///           - validatePaymasterUserOp reads only _merkleRoot and _nullifiers (own storage).
@@ -115,9 +121,12 @@ contract CreditPaymaster is IPaymaster {
             revert GasCapExceeded(callGas + verifyGas, MAX_CREDIT_GAS);
         }
 
-        // ── 2. Decode proof from paymasterData (offset 52, per ERC-4337 v0.7) ──
-        // paymasterAndData = address(20) || verGasLimit(16) || postOpGasLimit(16) || proofBytes
-        bytes calldata proofBytes = userOp.paymasterAndData[UserOperationLib.PAYMASTER_DATA_OFFSET:];
+        // ── 2. Decode proof from the paymaster "signature" region ───────────
+        // paymasterAndData = address(20) || verGasLimit(16) || postOpGasLimit(16) || proof || uint16(len) || PAYMASTER_SIG_MAGIC
+        // PAYMASTER_SIG_MAGIC causes paymasterDataKeccak to exclude proof bytes from userOpHash,
+        // breaking the circular dependency: userOpHash is now stable before proof generation.
+        bytes calldata proofBytes = UserOperationLib.getPaymasterSignature(userOp.paymasterAndData);
+        if (proofBytes.length == 0) revert InvalidProof();
         ISemaphore.SemaphoreProof memory proof = abi.decode(proofBytes, (ISemaphore.SemaphoreProof));
 
         // ── 3. Check merkle root (own storage only — ERC-7562 compliant) ────
