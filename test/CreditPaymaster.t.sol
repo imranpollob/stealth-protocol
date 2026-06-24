@@ -94,9 +94,7 @@ contract CreditPaymasterTest is TestBase {
         PackedUserOperation memory userOp2 = buildCreditUserOp(
             spender, bytes32(0), proof2, uopHash2
         );
-        // Scope check will fire first since scope != uopHash2 when we reuse old nullifier with old scope
-        // Use a proof where scope/message match but nullifier is reused
-        proof2.scope = uint256(uopHash2);
+        // Use a proof where message matches the new operation but nullifier is reused.
         proof2.message = uint256(uopHash2);
         bytes memory proofEncoded = abi.encode(proof2);
         userOp2.paymasterAndData = abi.encodePacked(
@@ -116,7 +114,7 @@ contract CreditPaymasterTest is TestBase {
         bytes32 uopHash = bytes32(uint256(0xABCD));
 
         ISemaphore.SemaphoreProof memory proof = buildProof(COMMITMENT, NULLIFIER, poolRoot, uopHash);
-        proof.scope = uint256(uopHash) + 1; // wrong scope
+        proof.scope = CREDIT_NULLIFIER_SCOPE + 1; // wrong credit scope
 
         PackedUserOperation memory userOp = buildCreditUserOp(spender, bytes32(0), proof, uopHash);
         bytes memory proofEncoded = abi.encode(proof);
@@ -127,6 +125,25 @@ contract CreditPaymasterTest is TestBase {
 
         vm.prank(ENTRY_POINT);
         vm.expectRevert(CreditPaymaster.WrongScope.selector);
+        creditPM.validatePaymasterUserOp(userOp, uopHash, 0);
+    }
+
+    function test_validate_wrongMessage_reverts() public {
+        uint256 poolRoot = _fullBootstrap();
+        bytes32 uopHash = bytes32(uint256(0xABCD));
+
+        ISemaphore.SemaphoreProof memory proof = buildProof(COMMITMENT, NULLIFIER, poolRoot, uopHash);
+        proof.message = uint256(uopHash) + 1; // proof is bound to a different operation
+
+        PackedUserOperation memory userOp = buildCreditUserOp(spender, bytes32(0), proof, uopHash);
+        bytes memory proofEncoded = abi.encode(proof);
+        userOp.paymasterAndData = abi.encodePacked(
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded, uint16(proofEncoded.length), PAYMASTER_SIG_MAGIC
+        );
+
+        vm.prank(ENTRY_POINT);
+        vm.expectRevert(CreditPaymaster.WrongMessage.selector);
         creditPM.validatePaymasterUserOp(userOp, uopHash, 0);
     }
 
@@ -174,6 +191,33 @@ contract CreditPaymasterTest is TestBase {
             abi.encodeWithSelector(
                 CreditPaymaster.GasCapExceeded.selector,
                 uint256(bigGas) + uint256(bigGas),
+                cap
+            )
+        );
+        creditPM.validatePaymasterUserOp(userOp, uopHash, 0);
+    }
+
+    function test_validate_gasPriceCapExceeded_reverts() public {
+        uint256 poolRoot = _fullBootstrap();
+        bytes32 uopHash = bytes32(uint256(0xABCD));
+        ISemaphore.SemaphoreProof memory proof = buildProof(COMMITMENT, NULLIFIER, poolRoot, uopHash);
+
+        PackedUserOperation memory userOp = buildCreditUserOp(spender, bytes32(0), proof, uopHash);
+        userOp.gasFees = bytes32(abi.encodePacked(uint128(1 gwei), uint128(11 gwei)));
+
+        bytes memory proofEncoded = abi.encode(proof);
+        userOp.paymasterAndData = abi.encodePacked(
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded, uint16(proofEncoded.length), PAYMASTER_SIG_MAGIC
+        );
+
+        uint256 cap = creditPM.MAX_ACCEPTED_MAX_FEE_PER_GAS();
+
+        vm.prank(ENTRY_POINT);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CreditPaymaster.GasPriceCapExceeded.selector,
+                uint256(11 gwei),
                 cap
             )
         );

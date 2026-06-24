@@ -32,7 +32,7 @@ import {MockAccount} from "./mock/MockAccount.sol";
 ///
 ///         CreditPaymaster circular-dependency fix (v1.1):
 ///           The previous design read proof bytes from userOp.paymasterAndData[52:], which
-///           included the proof in paymasterDataKeccak → userOpHash. Since proof.scope must
+///           included the proof in paymasterDataKeccak → userOpHash. Since proof.message must
 ///           equal userOpHash, there was a circular dependency with no pre-computable solution.
 ///           Fix: CreditPaymaster now uses the ERC-4337 PAYMASTER_SIG_MAGIC convention —
 ///             paymasterAndData = [address][verGas][postGas][proofBytes][uint16(len)][magic]
@@ -41,6 +41,7 @@ import {MockAccount} from "./mock/MockAccount.sol";
 contract SimulateValidationTest is Test {
     // keccak("PaymasterSignature")[:8]
     bytes8 internal constant PAYMASTER_SIG_MAGIC = bytes8(0x22e325a297439656);
+    uint256 internal constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
     EntryPointSimulations internal eps;
     MockAccount internal stealthAccount;
@@ -204,8 +205,8 @@ contract SimulateValidationTest is Test {
     ///         paymasterDataKeccak and userOpHash is stable before proof generation.
     ///
     ///         Two-phase encoding:
-    ///           Phase 1 — build UserOp with placeholder proof (scope=0), get stable hash.
-    ///           Phase 2 — set proof.scope = proof.message = userOpHash, re-encode, run.
+    ///           Phase 1 — build UserOp with placeholder proof, get stable hash.
+    ///           Phase 2 — set proof.message = userOpHash and fixed credit scope, re-encode, run.
     function test_creditPaymaster_simulateValidation_passes() public {
         uint256 poolRoot = creditPM.merkleRoot();
         assertGt(poolRoot, 0, "creditPM root must be nonzero (set during setUp bootstrap)");
@@ -214,7 +215,7 @@ contract SimulateValidationTest is Test {
 
         // ── Phase 1: build UserOp with placeholder proof to obtain the stable hash ──
         // With PAYMASTER_SIG_MAGIC, proof bytes are excluded from paymasterDataKeccak,
-        // so userOpHash does not depend on proof.scope — no circular dependency.
+        // so userOpHash does not depend on proof.message — no circular dependency.
         bytes memory placeholderProofEncoded = abi.encode(ISemaphore.SemaphoreProof({
             merkleTreeDepth: 1,
             merkleTreeRoot: poolRoot,
@@ -247,7 +248,7 @@ contract SimulateValidationTest is Test {
             merkleTreeRoot: poolRoot,
             nullifier: nullifier,
             message: uint256(userOpHash),
-            scope: uint256(userOpHash),
+            scope: CREDIT_NULLIFIER_SCOPE,
             points: [uint256(1), 2, 3, 4, 5, 6, 7, 8]
         }));
 

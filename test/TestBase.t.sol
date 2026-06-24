@@ -23,6 +23,7 @@ abstract contract TestBase is Test {
     // keccak("PaymasterSignature")[:8] — sentinel that tells paymasterDataKeccak to
     // exclude trailing proof bytes from userOpHash (ERC-4337 paymaster signature convention)
     bytes8 internal constant PAYMASTER_SIG_MAGIC = bytes8(0x22e325a297439656);
+    uint256 internal constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
     MockAnnouncer internal announcer;
     MockSemaphoreVerifier internal verifier;
@@ -137,7 +138,7 @@ abstract contract TestBase is Test {
         return keccak256(abi.encode(keccak256(abi.encode(userOp)), ENTRY_POINT, block.chainid));
     }
 
-    /// Build a SemaphoreProof struct with scope and message both set to userOpHash.
+    /// Build a SemaphoreProof struct with fixed credit scope and message set to userOpHash.
     function buildProof(
         uint256 commitment,
         uint256 nullifier,
@@ -150,7 +151,7 @@ abstract contract TestBase is Test {
             merkleTreeRoot: currentRoot,
             nullifier: nullifier,
             message: uopHashUint,
-            scope: uopHashUint,
+            scope: CREDIT_NULLIFIER_SCOPE,
             points: [uint256(1), 2, 3, 4, 5, 6, 7, 8]
         });
         commitment; // suppress unused warning

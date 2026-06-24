@@ -6,11 +6,9 @@ import {CreditPaymaster} from "../src/CreditPaymaster.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 
-/// @notice Verifies that a spent nullifier cannot be replayed.
-///         The nullifier is scoped to a specific userOpHash (via scope field),
-///         so even if the attacker tries a different userOp, they need a new proof
-///         (different externalNullifier → different nullifierHash from the circuit).
-///         This test shows the on-chain nullifier set correctly blocks double-spend.
+/// @notice Verifies that a spent credit-scoped nullifier cannot be replayed.
+///         The proof message binds to userOpHash, but the nullifier scope is fixed
+///         so the same credit reveals the same nullifier across UserOperations.
 contract ReplayResistanceTest is TestBase {
     uint256 internal constant COMMITMENT = 777888999000;
     uint256 internal constant NULLIFIER  = 111222333444;
@@ -25,7 +23,7 @@ contract ReplayResistanceTest is TestBase {
         return creditPool.currentRoot();
     }
 
-    function test_nullifierRejectedOnSecondUse() public {
+    function test_sameCreditCannotSponsorTwoDifferentUserOperations() public {
         uint256 poolRoot = _deposit();
         bytes32 uopHash = bytes32(uint256(0xCAFEBABE));
 
@@ -46,9 +44,6 @@ contract ReplayResistanceTest is TestBase {
         // Second use with same nullifier — must fail
         bytes32 uopHash2 = bytes32(uint256(0xDEADF00D));
         ISemaphore.SemaphoreProof memory proof2 = buildProof(COMMITMENT, NULLIFIER, poolRoot, uopHash2);
-        // Overwrite scope/message to match the new userOpHash
-        proof2.scope = uint256(uopHash2);
-        proof2.message = uint256(uopHash2);
         bytes memory proofEncoded2 = abi.encode(proof2);
         PackedUserOperation memory userOp2 = buildCreditUserOp(spender, bytes32(0), proof2, uopHash2);
         userOp2.paymasterAndData = abi.encodePacked(
@@ -61,6 +56,47 @@ contract ReplayResistanceTest is TestBase {
             abi.encodeWithSelector(CreditPaymaster.NullifierSpent.selector, NULLIFIER)
         );
         creditPM.validatePaymasterUserOp(userOp2, uopHash2, 0);
+    }
+
+    function test_proofForOneUserOpHashCannotBeReusedForAnother() public {
+        uint256 poolRoot = _deposit();
+        bytes32 uopHash = bytes32(uint256(0xCAFEBABE));
+        bytes32 differentHash = bytes32(uint256(0xDEADF00D));
+
+        ISemaphore.SemaphoreProof memory proof = buildProof(COMMITMENT, NULLIFIER, poolRoot, uopHash);
+        bytes memory proofEncoded = abi.encode(proof);
+        PackedUserOperation memory userOp = buildCreditUserOp(spender, bytes32(0), proof, uopHash);
+        userOp.paymasterAndData = abi.encodePacked(
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded, uint16(proofEncoded.length), PAYMASTER_SIG_MAGIC
+        );
+
+        vm.prank(ENTRY_POINT);
+        vm.expectRevert(CreditPaymaster.WrongMessage.selector);
+        creditPM.validatePaymasterUserOp(userOp, differentHash, 0);
+    }
+
+    function test_replayOfSameOperationRejected() public {
+        uint256 poolRoot = _deposit();
+        bytes32 uopHash = bytes32(uint256(0xCAFEBABE));
+
+        ISemaphore.SemaphoreProof memory proof = buildProof(COMMITMENT, NULLIFIER, poolRoot, uopHash);
+        bytes memory proofEncoded = abi.encode(proof);
+        PackedUserOperation memory userOp = buildCreditUserOp(spender, bytes32(0), proof, uopHash);
+        userOp.paymasterAndData = abi.encodePacked(
+            address(creditPM), uint128(200_000), uint128(0),
+            proofEncoded, uint16(proofEncoded.length), PAYMASTER_SIG_MAGIC
+        );
+
+        vm.prank(ENTRY_POINT);
+        (, uint256 v1) = creditPM.validatePaymasterUserOp(userOp, uopHash, 0);
+        assertEq(v1, 0);
+
+        vm.prank(ENTRY_POINT);
+        vm.expectRevert(
+            abi.encodeWithSelector(CreditPaymaster.NullifierSpent.selector, NULLIFIER)
+        );
+        creditPM.validatePaymasterUserOp(userOp, uopHash, 0);
     }
 
     function test_differentNullifiers_bothAccepted() public {

@@ -20,11 +20,10 @@ import {NullifierLogic} from "./lib/NullifierLogic.sol";
 ///         Proof structure (Semaphore v4 SemaphoreProof):
 ///           merkleTreeDepth  — depth of the LeanIMT at proof time
 ///           merkleTreeRoot   — must match _merkleRoot (mirrored from CreditPool)
-///           nullifier        — Poseidon(identity_nullifier, scope) revealed on-chain
+///           nullifier        — Poseidon(identity_nullifier, CREDIT_NULLIFIER_SCOPE) revealed on-chain
 ///           message          — userOpHash cast to uint256 (binds proof to this op)
-///           scope            — userOpHash cast to uint256 (external nullifier;
-///                              scopes nullifier to this specific UserOperation hash,
-///                              preventing replay and front-running)
+///           scope            — fixed CREDIT_NULLIFIER_SCOPE, so the same credit reveals
+///                              the same nullifier across different UserOperations
 ///           points[8]        — Groth16 proof (pA, pB, pC packed as 8 uint256)
 ///
 ///         paymasterAndData layout (ERC-4337 v0.7):
@@ -37,7 +36,7 @@ import {NullifierLogic} from "./lib/NullifierLogic.sol";
 ///
 ///         The PAYMASTER_SIG_MAGIC suffix excludes the proof bytes from paymasterDataKeccak,
 ///         making userOpHash stable before proof generation. This breaks the circular
-///         dependency (proof.scope == userOpHash) that would otherwise exist.
+///         dependency (proof.message == userOpHash) that would otherwise exist.
 ///
 ///         ERC-7562 compliance:
 ///           - validatePaymasterUserOp reads only _merkleRoot and _nullifiers (own storage).
@@ -60,6 +59,8 @@ contract CreditPaymaster is IPaymaster {
     // immune to gas-price volatility between Bootstrap and spend phases.
     // Set after gas measurement in M8; placeholder 500 000 is conservative.
     uint256 public constant MAX_CREDIT_GAS = 500_000;
+    uint256 public constant MAX_ACCEPTED_MAX_FEE_PER_GAS = 10 gwei;
+    uint256 public constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
     address public immutable entryPoint;
     address public immutable creditPool; // only caller allowed for mirrorRoot
@@ -77,6 +78,7 @@ contract CreditPaymaster is IPaymaster {
     error InvalidProof();
     error NullifierSpent(uint256 nullifier);
     error GasCapExceeded(uint256 requested, uint256 cap);
+    error GasPriceCapExceeded(uint256 requested, uint256 cap);
     error RootMismatch(uint256 proofRoot, uint256 storedRoot);
     error WrongScope();
     error WrongMessage();
@@ -121,6 +123,11 @@ contract CreditPaymaster is IPaymaster {
             revert GasCapExceeded(callGas + verifyGas, MAX_CREDIT_GAS);
         }
 
+        uint256 maxFeePerGas = userOp.unpackMaxFeePerGas();
+        if (maxFeePerGas > MAX_ACCEPTED_MAX_FEE_PER_GAS) {
+            revert GasPriceCapExceeded(maxFeePerGas, MAX_ACCEPTED_MAX_FEE_PER_GAS);
+        }
+
         // ── 2. Decode proof from the paymaster "signature" region ───────────
         // paymasterAndData = address(20) || verGasLimit(16) || postOpGasLimit(16) || proof || uint16(len) || PAYMASTER_SIG_MAGIC
         // PAYMASTER_SIG_MAGIC causes paymasterDataKeccak to exclude proof bytes from userOpHash,
@@ -134,11 +141,11 @@ contract CreditPaymaster is IPaymaster {
             revert RootMismatch(proof.merkleTreeRoot, _merkleRoot);
         }
 
-        // ── 4. Bind proof to this exact UserOperation (scope = externalNullifier) ──
-        // Both scope and message carry userOpHash so an observer cannot reuse
-        // a valid proof for a different UserOperation or a different scope.
+        // ── 4. Bind proof to this exact UserOperation while keeping the
+        // nullifier credit-scoped. message carries userOpHash; scope is fixed
+        // so the same Semaphore identity reveals the same nullifier on every spend.
         uint256 uopHashUint = uint256(userOpHash);
-        if (proof.scope != uopHashUint) revert WrongScope();
+        if (proof.scope != CREDIT_NULLIFIER_SCOPE) revert WrongScope();
         if (proof.message != uopHashUint) revert WrongMessage();
 
         // ── 5. Replay check (own storage) ───────────────────────────────────

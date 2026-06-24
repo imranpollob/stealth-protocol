@@ -43,8 +43,9 @@ contract DemoVerifier is ISemaphoreVerifier {
 contract Demo is Script {
     // Simulated Semaphore v4 identity commitment (off-chain: Poseidon(EdDSA_pubkey))
     uint256 constant DEMO_COMMITMENT = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
-    // Simulated on-chain nullifier (off-chain: Poseidon(identity_nullifier, userOpHash))
+    // Simulated on-chain nullifier (off-chain: Poseidon(identity_nullifier, CREDIT_NULLIFIER_SCOPE))
     uint256 constant DEMO_NULLIFIER  = 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890;
+    uint256 constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
     uint256 constant V_MIN = 0.01 ether;
     uint256 constant NONREFUNDABLE_FEE = 0.01 ether;
@@ -172,7 +173,7 @@ contract Demo is Script {
             merkleTreeRoot: poolRoot,
             nullifier: DEMO_NULLIFIER,
             message: uopHashUint,  // bound to this exact UserOp
-            scope: uopHashUint,    // externalNullifier = userOpHash
+            scope: CREDIT_NULLIFIER_SCOPE, // credit-scoped nullifier
             points: [uint256(1), 2, 3, 4, 5, 6, 7, 8]
         });
 
