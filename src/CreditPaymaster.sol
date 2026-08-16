@@ -62,6 +62,16 @@ contract CreditPaymaster is IPaymaster {
     uint256 public constant MAX_ACCEPTED_MAX_FEE_PER_GAS = 10 gwei;
     uint256 public constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
+    /// @notice Absolute sponsorship budget for one credit, in wei: c_spend * p_max.
+    ///         This is the binding form of the budget claim. The per-field caps above
+    ///         constrain only two of the five gas terms that the EntryPoint actually
+    ///         charges — requiredPrefund covers verificationGasLimit + callGasLimit +
+    ///         paymasterVerificationGasLimit + paymasterPostOpGasLimit + preVerificationGas.
+    ///         Without this check an operation can stay inside MAX_CREDIT_GAS while
+    ///         drawing an arbitrarily large prefund through paymasterVerificationGasLimit
+    ///         or preVerificationGas.
+    uint256 public constant MAX_SPONSORSHIP_COST = MAX_CREDIT_GAS * MAX_ACCEPTED_MAX_FEE_PER_GAS;
+
     address public immutable entryPoint;
     address public immutable creditPool; // only caller allowed for mirrorRoot
 
@@ -79,6 +89,7 @@ contract CreditPaymaster is IPaymaster {
     error NullifierSpent(uint256 nullifier);
     error GasCapExceeded(uint256 requested, uint256 cap);
     error GasPriceCapExceeded(uint256 requested, uint256 cap);
+    error MaxCostExceeded(uint256 requested, uint256 cap);
     error RootMismatch(uint256 proofRoot, uint256 storedRoot);
     error WrongScope();
     error WrongMessage();
@@ -113,8 +124,16 @@ contract CreditPaymaster is IPaymaster {
     function validatePaymasterUserOp(
         PackedUserOperation calldata userOp,
         bytes32 userOpHash,
-        uint256 /* maxCost */
+        uint256 maxCost
     ) external override onlyEntryPoint returns (bytes memory context, uint256 validationData) {
+        // ── 0. Enforce the sponsorship budget (c_spend * p_max) ─────────────
+        // maxCost is the EntryPoint's requiredPrefund for this operation: the
+        // largest amount this paymaster's deposit can be debited. Checking it
+        // directly is what makes the budget bound total rather than per-field.
+        if (maxCost > MAX_SPONSORSHIP_COST) {
+            revert MaxCostExceeded(maxCost, MAX_SPONSORSHIP_COST);
+        }
+
         // ── 1. Enforce gas cap (c_credit bound in fixed gas units) ──────────
         // accountGasLimits = uint128(verificationGasLimit) || uint128(callGasLimit)
         uint256 callGas = userOp.unpackCallGasLimit();
