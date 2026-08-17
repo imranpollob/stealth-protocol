@@ -77,7 +77,7 @@ contract SybilResistanceTest is TestBase {
         vm.prank(deployer);
         registry.setVMin(newVMin);
 
-        // Old V_MIN + FEE (0.01 + 0.01 = 0.02 ether) is now below required (1 + 0.01 ether)
+        // Old V_MIN + FEE (0.01 + 0.021 = 0.031 ether) is now below required (1 + 0.021 ether)
         vm.prank(attacker);
         vm.expectRevert(
             abi.encodeWithSelector(

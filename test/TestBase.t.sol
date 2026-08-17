@@ -10,6 +10,7 @@ import {MockAnnouncer} from "./mock/MockAnnouncer.sol";
 import {MockSemaphoreVerifier} from "./mock/MockSemaphoreVerifier.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {BaseAccount} from "account-abstraction/core/BaseAccount.sol";
 import {UserOperationLib} from "account-abstraction/core/UserOperationLib.sol";
 
 abstract contract TestBase is Test {
@@ -17,7 +18,7 @@ abstract contract TestBase is Test {
     address internal constant ENTRY_POINT = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
 
     uint256 internal constant V_MIN = 0.01 ether;
-    uint256 internal constant NONREFUNDABLE_FEE = 0.01 ether;
+    uint256 internal constant NONREFUNDABLE_FEE = 0.021 ether;
     uint256 internal constant SCHEME_ID = 1;
 
     // keccak("PaymasterSignature")[:8] — sentinel that tells paymasterDataKeccak to
@@ -70,6 +71,7 @@ abstract contract TestBase is Test {
         bootstrapPM = new BootstrapPaymaster(
             ENTRY_POINT,
             registryAddr,
+            creditPoolAddr,
             CreditPool.deposit.selector
         );
         registry = new AnnouncementRegistry(
@@ -93,7 +95,12 @@ abstract contract TestBase is Test {
     {
         userOp.sender = _sender;
         userOp.nonce = 0;
-        userOp.callData = abi.encodeCall(CreditPool.deposit, (commitment));
+        // ERC-4337 runs callData on userOp.sender, so a bootstrap operation is an account
+        // execution wrapping the pool call. BootstrapPaymaster pins every field of it.
+        userOp.callData = abi.encodeCall(
+            BaseAccount.execute,
+            (address(creditPool), 0, abi.encodeCall(CreditPool.deposit, (commitment)))
+        );
         // accountGasLimits = verificationGasLimit(high128) || callGasLimit(low128)
         userOp.accountGasLimits = bytes32(abi.encodePacked(uint128(100_000), uint128(200_000)));
         userOp.preVerificationGas = 21_000;

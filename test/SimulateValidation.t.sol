@@ -14,6 +14,7 @@ import {CreditPaymaster} from "../src/CreditPaymaster.sol";
 import {MockAnnouncer} from "./mock/MockAnnouncer.sol";
 import {MockSemaphoreVerifier} from "./mock/MockSemaphoreVerifier.sol";
 import {MockAccount} from "./mock/MockAccount.sol";
+import {BaseAccount} from "account-abstraction/core/BaseAccount.sol";
 
 /// @notice Integration test that runs EntryPoint.simulateValidation() against both
 ///         paymasters to confirm they do not revert under the real ERC-4337 validation
@@ -57,7 +58,7 @@ contract SimulateValidationTest is Test {
     address internal deployer = makeAddr("deployer");
 
     uint256 constant V_MIN             = 0.01 ether;
-    uint256 constant NONREFUNDABLE_FEE = 0.01 ether;
+    uint256 constant NONREFUNDABLE_FEE = 0.021 ether;
     // Must be < BN254 scalar field r; LeanIMT rejects leaves that exceed it
     uint256 constant CREDIT_COMMITMENT = 42424242;
 
@@ -81,7 +82,7 @@ contract SimulateValidationTest is Test {
 
         creditPM    = new CreditPaymaster(address(eps), creditPoolAddr, address(verifier));
         creditPool  = new CreditPool(creditPMAddr, registryAddr);
-        bootstrapPM = new BootstrapPaymaster(address(eps), registryAddr, CreditPool.deposit.selector);
+        bootstrapPM = new BootstrapPaymaster(address(eps), registryAddr, creditPoolAddr, CreditPool.deposit.selector);
         registry    = new AnnouncementRegistry(
             address(announcer), bootstrapPMAddr, creditPoolAddr, V_MIN, NONREFUNDABLE_FEE
         );
@@ -140,7 +141,7 @@ contract SimulateValidationTest is Test {
             PackedUserOperation memory initOp;
             initOp.sender             = address(stealthAccount);
             initOp.nonce              = 0;
-            initOp.callData           = abi.encodeCall(CreditPool.deposit, (CREDIT_COMMITMENT));
+            initOp.callData           = abi.encodeCall(BaseAccount.execute, (address(creditPool), 0, abi.encodeCall(CreditPool.deposit, (CREDIT_COMMITMENT))));
             initOp.accountGasLimits   = bytes32(abi.encodePacked(uint128(100_000), uint128(200_000)));
             initOp.preVerificationGas = 21_000;
             initOp.gasFees            = bytes32(abi.encodePacked(uint128(1 gwei), uint128(2 gwei)));
@@ -171,7 +172,7 @@ contract SimulateValidationTest is Test {
         PackedUserOperation memory userOp;
         userOp.sender             = address(stealthAccount2);
         userOp.nonce              = 0;
-        userOp.callData           = abi.encodeCall(CreditPool.deposit, (uint256(0xdeadbeef)));
+        userOp.callData           = abi.encodeCall(BaseAccount.execute, (address(creditPool), 0, abi.encodeCall(CreditPool.deposit, (uint256(0xdeadbeef)))));
         userOp.accountGasLimits   = bytes32(abi.encodePacked(uint128(100_000), uint128(200_000)));
         userOp.preVerificationGas = 21_000;
         userOp.gasFees            = bytes32(abi.encodePacked(uint128(1 gwei), uint128(2 gwei)));

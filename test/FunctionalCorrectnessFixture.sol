@@ -56,7 +56,7 @@ abstract contract FunctionalCorrectnessFixture is CommonBase {
 
     // ── Fixed protocol parameters ────────────────────────────────────────────
     uint256 internal constant V_MIN = 0.01 ether;
-    uint256 internal constant NONREFUNDABLE_FEE = 0.01 ether;
+    uint256 internal constant NONREFUNDABLE_FEE = 0.021 ether;
     uint256 internal constant SCHEME_ID = 1;
     uint256 internal constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
@@ -122,7 +122,7 @@ abstract contract FunctionalCorrectnessFixture is CommonBase {
         );
         creditPool = new CreditPool(creditPMAddr, registryAddr); //          nonce + 4
         bootstrapPM = new BootstrapPaymaster( //                             nonce + 5
-            address(entryPoint), registryAddr, CreditPool.deposit.selector
+            address(entryPoint), registryAddr, creditPoolAddr, CreditPool.deposit.selector
         );
         registry = new AnnouncementRegistry( //                              nonce + 6
             address(announcer), address(bootstrapPM), creditPoolAddr, V_MIN, NONREFUNDABLE_FEE
