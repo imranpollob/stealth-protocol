@@ -28,6 +28,18 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
     IEligibilityMirror public immutable bootstrapPaymaster;
     IEligibilityMirror public immutable creditPool;
 
+    /// @notice Smallest admissible non-refundable fee, exclusive: F must be strictly greater.
+    ///         Derived from the Sybil-resistance invariant at the prototype parameters:
+    ///           F > kappa * c_credit * p_max
+    ///             = 2 * (BootstrapPaymaster.MAX_BOOTSTRAP_SPONSORSHIP_COST
+    ///                    + CreditPaymaster.MAX_SPONSORSHIP_COST)
+    ///             = 2 * (0.005 ETH + 0.005 ETH)
+    ///             = 0.02 ETH
+    ///         Held as a literal rather than read from the paymasters so the registry
+    ///         stays free of any dependency on them. If either sponsorship cap changes,
+    ///         this constant must be recomputed — it is not derived on-chain.
+    uint256 public constant MIN_NON_REFUNDABLE_FEE = 0.02 ether;
+
     address public owner;
     uint256 public vMin;
     // Permanently burned on each announcement — the genuine Sybil cost.
@@ -40,6 +52,7 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
     error ETHForwardFailed();
     error Unauthorized();
     error ZeroAddress();
+    error FeeBelowSybilBound(uint256 fee, uint256 bound);
 
     event VMinUpdated(uint256 oldVMin, uint256 newVMin);
 
@@ -62,6 +75,9 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
     ) {
         if (_announcer == address(0) || _bootstrapPM == address(0) || _creditPool == address(0)) {
             revert ZeroAddress();
+        }
+        if (_nonRefundableFee <= MIN_NON_REFUNDABLE_FEE) {
+            revert FeeBelowSybilBound(_nonRefundableFee, MIN_NON_REFUNDABLE_FEE);
         }
         announcer = IERC5564Announcer(_announcer);
         bootstrapPaymaster = IEligibilityMirror(_bootstrapPM);
@@ -115,6 +131,9 @@ contract AnnouncementRegistry is IAnnouncementRegistry {
     }
 
     function setNonRefundableFee(uint256 newFee) external onlyOwner {
+        if (newFee <= MIN_NON_REFUNDABLE_FEE) {
+            revert FeeBelowSybilBound(newFee, MIN_NON_REFUNDABLE_FEE);
+        }
         emit NonRefundableFeeUpdated(nonRefundableFee, newFee);
         nonRefundableFee = newFee;
     }

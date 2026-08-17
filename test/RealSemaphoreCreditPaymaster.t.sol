@@ -17,7 +17,7 @@ contract RealSemaphoreCreditPaymasterTest is Test {
     address internal constant ENTRY_POINT = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
     bytes8 internal constant PAYMASTER_SIG_MAGIC = bytes8(0x22e325a297439656);
     uint256 internal constant V_MIN = 0.01 ether;
-    uint256 internal constant NONREFUNDABLE_FEE = 0.01 ether;
+    uint256 internal constant NONREFUNDABLE_FEE = 0.021 ether;
     uint256 internal constant SCHEME_ID = 1;
 
     MockAnnouncer internal announcer;
@@ -50,7 +50,7 @@ contract RealSemaphoreCreditPaymasterTest is Test {
 
         creditPM = new CreditPaymaster(ENTRY_POINT, creditPoolAddr, address(verifier));
         creditPool = new CreditPool(creditPMAddr, registryAddr);
-        bootstrapPM = new BootstrapPaymaster(ENTRY_POINT, registryAddr, CreditPool.deposit.selector);
+        bootstrapPM = new BootstrapPaymaster(ENTRY_POINT, registryAddr, creditPoolAddr, CreditPool.deposit.selector);
         registry = new AnnouncementRegistry(
             address(announcer),
             bootstrapPMAddr,

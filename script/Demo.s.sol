@@ -8,6 +8,7 @@ import {CreditPool} from "../src/CreditPool.sol";
 import {CreditPaymaster} from "../src/CreditPaymaster.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {BaseAccount} from "account-abstraction/core/BaseAccount.sol";
 import {UserOperationLib} from "account-abstraction/core/UserOperationLib.sol";
 import {ISemaphoreVerifier} from "@semaphore-protocol/contracts/interfaces/ISemaphoreVerifier.sol";
 import {IERC5564Announcer} from "../src/interfaces/IERC5564Announcer.sol";
@@ -48,7 +49,7 @@ contract Demo is Script {
     uint256 constant CREDIT_NULLIFIER_SCOPE = uint256(keccak256("stealth-protocol.credit.v1"));
 
     uint256 constant V_MIN = 0.01 ether;
-    uint256 constant NONREFUNDABLE_FEE = 0.01 ether;
+    uint256 constant NONREFUNDABLE_FEE = 0.021 ether;
     uint256 constant SCHEME_ID = 1;
 
     function run() external {
@@ -88,7 +89,7 @@ contract Demo is Script {
         CreditPaymaster creditPM = new CreditPaymaster(ENTRY_POINT, creditPoolAddr, address(verifier));
         CreditPool creditPool    = new CreditPool(creditPMAddr, registryAddr);
         BootstrapPaymaster bootstrapPM = new BootstrapPaymaster(
-            ENTRY_POINT, registryAddr, CreditPool.deposit.selector
+            ENTRY_POINT, registryAddr, creditPoolAddr, CreditPool.deposit.selector
         );
         AnnouncementRegistry registry = new AnnouncementRegistry(
             address(announcer), bootstrapPMAddr, creditPoolAddr, V_MIN, NONREFUNDABLE_FEE
@@ -129,7 +130,7 @@ contract Demo is Script {
         console.log("Simulating EntryPoint flow for stealth address...");
 
         // Build the UserOperation
-        bytes memory depositCallData = abi.encodeCall(CreditPool.deposit, (DEMO_COMMITMENT));
+        bytes memory depositCallData = abi.encodeCall(BaseAccount.execute, (address(creditPool), 0, abi.encodeCall(CreditPool.deposit, (DEMO_COMMITMENT))));
         PackedUserOperation memory depositOp;
         depositOp.sender = stealth;
         depositOp.nonce = 0;

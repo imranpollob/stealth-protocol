@@ -34,7 +34,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Foundry dependencies (installed with --no-git)
-lib/
+/lib/
 
 # Downloaded tarballs
 *.tgz
